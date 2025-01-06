@@ -1,3 +1,6 @@
+
+from urllib.parse import urlparse, parse_qs, unquote
+
 greet = "Привет, {name}! Этот бот создан для студентов и абитуриентов МРК. Вы можете задавать любые вопросы, и мы с радостью на них ответим. Мы регулярно выкладываем много полезной информации."
 
 
@@ -334,3 +337,24 @@ issuance_of_documents = (
     '1. расписку о приеме документов;\n'
     '2. паспорт.\n'
 )
+
+schedule = (
+    'расписание'
+)
+session = (
+    'мероприятия'
+)
+courses = (
+    'курсы'
+)
+events = (
+    'мероприятия'
+)
+# def generate_yandex_maps_route(user_lat: float, user_lon: float, college_lat: float, college_lon: float) -> str:
+#     base_url = "https://yandex.by/maps/?rtext="
+#     route_url = f"{base_url}{user_lat},{user_lon}~{college_lat},{college_lon}&rtt=auto"
+#     return route_url
+#
+# way = (
+#     'путь'
+# )

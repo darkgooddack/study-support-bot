@@ -3,9 +3,13 @@ from aiogram import types, Bot, exceptions
 from aiogram import Router
 from aiogram.exceptions import TelegramForbiddenError
 from aiogram.fsm.state import StatesGroup, State
-from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, Update, KeyboardButton, \
+    ReplyKeyboardMarkup
 from aiogram.filters import Command, StateFilter
 from aiogram import F
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+from aiogram.types import ContentType
 from app import keyboard
 from app.keyboard import HELP_DICT, DOCS, SPECIALTIES
 from data.crud import get_all_users
@@ -125,7 +129,6 @@ async def unblock_user(message: Message):
         await message.answer(f"Пользователь `{target}` был разблокирован.")
     else:
         await message.answer(f"Пользователь `{target}` не найден в списке блокировки.")
-
 
 @router.message(Command("sendmessage_all"))
 async def send_message_to_all_users(message: types.Message, bot: Bot):
@@ -257,11 +260,94 @@ async def tech_support(msg: Message):
         parse_mode="HTML",
         reply_markup=keyboard.get_main_keyboard()
     )
+# Пример данных
+data = {
+    "schedule": "Расписание можно найти на сайте колледжа.",
+    "session": "Экзамены проходят в июне и декабре.",
+    "courses": "О кружках можно узнать у преподавателей.",
+    "events": "Следите за анонсами в соцсетях колледжа.",
+    "way": "Для маршрута используйте Яндекс.Карты.",
+}
 
+FAQ = {
+    "Расписание занятий?": data["schedule"],
+    "Даты экзаменов или сессии?": data["session"],
+    "Где узнать о кружках?": data["courses"],
+    "Мероприятиях в колледже?": data["events"],
+    "Как добраться до колледжа?": data["way"],
+}
 
-@router.message(F.text == "❔ Общие вопросы")
-async def general_questions(msg: Message):
-    await msg.answer('Задайте ваш вопрос, и я постараюсь на него ответить.', reply_markup=keyboard.get_prospects_keyboard())
+college_lat = 53.919005  # Пример: широта колледжа
+college_lon = 27.592563  # Пример: долгота колледжа
+
+# Создание кнопки для запроса местоположения
+location_button = KeyboardButton(text="📍 Поделиться местоположением", request_location=True)
+
+# Исправление: обязательно указываем список кнопок в клавиатуре
+location_keyboard = ReplyKeyboardMarkup(keyboard=[[location_button]], resize_keyboard=True)
+
+# Хранение состояния пользователя (выбор FAQ)
+user_state = {}
+
+# Функция для генерации маршрута в Яндекс.Картах
+def generate_yandex_maps_route(user_lat: float, user_lon: float, college_lat: float, college_lon: float) -> str:
+    base_url = "https://yandex.by/maps/?rtext="
+    route_url = f"{base_url}{user_lat},{user_lon}~{college_lat},{college_lon}&rtt=auto"
+    return route_url
+
+# Обработчик для выбора FAQ
+@router.message(F.text == "❔ FAQ")
+async def entrance(msg: Message):
+    await msg.answer('Выберите один из вариантов:', reply_markup=get_faq_keyboard())
+
+# Обработчик нажатия кнопки FAQ
+@router.callback_query(F.data.startswith("faq_"))
+async def handle_docs_callback(callback: CallbackQuery):
+    button_text = callback.data[len("faq_"):]
+
+    # Если выбран вопрос про маршрут, запросим местоположение
+    if button_text == "Как добраться до колледжа?":
+        user_state[callback.from_user.id] = "waiting_for_location"  # Запоминаем состояние
+        await callback.message.answer(
+            "Для того чтобы построить маршрут, пожалуйста, отправьте мне ваше местоположение.",
+            reply_markup=location_keyboard
+        )
+    else:
+        faq_text = FAQ.get(button_text, "Вопрос не найден")
+        await callback.message.answer(f"{faq_text}")
+    await callback.answer()
+
+# Функция для создания инлайн клавиатуры для FAQ
+def get_faq_keyboard():
+    builder = InlineKeyboardBuilder()
+    for button_text in FAQ.keys():
+        builder.add(InlineKeyboardButton(text=button_text, callback_data=f"faq_{button_text}"))
+    builder.adjust(1)
+    return builder.as_markup()
+
+# Обработчик местоположения
+@router.message(F.content_type == 'location')
+async def handle_location(msg: Message):
+    user_id = msg.from_user.id
+
+    # Проверяем, что пользователь выбрал вопрос про маршрут
+    if user_state.get(user_id) == "waiting_for_location" and msg.location:
+        user_lat = msg.location.latitude
+        user_lon = msg.location.longitude
+        route_url = generate_yandex_maps_route(user_lat, user_lon, college_lat, college_lon)
+        way = f'🚗 <a href="{route_url}">Построить маршрут</a>'
+        await msg.answer(way, parse_mode="HTML")
+        # Сбрасываем состояние
+        user_state[user_id] = None
+
+        await msg.answer(
+            "Выберите дальнейшее действие:",
+            reply_markup=keyboard.get_prospects_keyboard()
+        )
+    else:
+        await msg.answer("Ошибка: не удалось получить ваше местоположение. Пожалуйста, попробуйте снова.")
+
+    await msg.answer("Выберите один из вариантов:", reply_markup=get_faq_keyboard())
 
 
 @router.message(F.text == "🎯 Поступление")
@@ -553,6 +639,44 @@ async def handle_new_value(msg: types.Message, state: FSMContext):
     else:
         await msg.answer("Ошибка. Пожалуйста, выберите поле для редактирования.")
 
+
+@router.message(F.content_type == ContentType.VOICE)
+async def handle_voice_message(message: types.Message):
+    user = message.from_user
+    username = user.username if user.username else f"ID: {user.id}"
+    voice_file_id = message.voice.file_id  # ID голосового файла
+
+    # Отправляем сообщение администратору с файлом
+    await message.bot.send_voice(
+        chat_id=1741279318,  # Ваш ID администратора
+        voice=voice_file_id,
+        caption=f"🎤 Голосовое сообщение от @{username}."
+    )
+
+    # Ответ пользователю
+    await message.answer("Ваше голосовое сообщение отправлено администратору. Спасибо!")
+
+@router.message(F.content_type == ContentType.VIDEO_NOTE)
+async def handle_video_note_message(message: types.Message):
+    user = message.from_user
+    username = user.username if user.username else f"ID: {user.id}"
+    user_id = user.id
+    video_note_file_id = message.video_note.file_id  # ID файла кружочка
+
+    # Отправляем видеозапись администратору
+    await message.bot.send_video_note(
+        chat_id=1741279318,  # Ваш ID администратора
+        video_note=video_note_file_id
+    )
+
+    # Также отправляем администратору информацию о пользователе, кто отправил кружок
+    await message.bot.send_message(
+        chat_id=1741279318,
+        text=f"🎤 Видеозапись (кружок) отправлена пользователем @{username} (ID: {user_id})."
+    )
+
+    # Ответ пользователю
+    await message.answer("Ваше видеосообщение отправлено администратору. Спасибо!")
 
 @router.message()
 async def handle_unknown_query(message: Message, bot: Bot):

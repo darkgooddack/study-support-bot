@@ -31,7 +31,7 @@ def get_main_keyboard():
 def get_prospects_keyboard():
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="❔ Общие вопросы"), KeyboardButton(text="🎯 Поступление")],
+            [KeyboardButton(text="❔ FAQ"), KeyboardButton(text="🎯 Поступление")],
             [KeyboardButton(text="🔙 Назад"), KeyboardButton(text="📋 Зачисление")],
         ],
         resize_keyboard=True
@@ -157,6 +157,23 @@ SPECIALTIES = {
     "ТОИБ": data.toib,
     "ТЭСВТ": data.tesvt
 }
+#
+# FAQ = {
+#     "Расписание занятий?": data.schedule,
+#     "Даты экзаменов или сессии?": data.session,
+#     "Где узнать о кружках?": data.courses,
+#     "Мероприятиях в колледже?": data.events,
+#     "Как добраться до колледжа?": data.way,
+# }
+#
+#
+# def get_faq_keyboard():
+#     builder = InlineKeyboardBuilder()
+#     for button_text in FAQ.keys():
+#         builder.add(InlineKeyboardButton(text=button_text, callback_data=f"faq_{button_text}"))
+#     builder.adjust(1)
+#     return builder.as_markup()
+
 
 # Функция для создания клавиатуры для DOCS
 def get_docs_keyboard():
